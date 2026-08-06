@@ -1,0 +1,40 @@
+{
+  "name": "@across-protocol/v5-token-pricing",
+  "version": "0.1.0",
+  "description": "Point-in-time USD token pricing: what was this token worth at this instant.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepare": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@across-protocol/constants": "^3.1.104"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "fast-check": "^3.23.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  },
+  "private": true
+}
