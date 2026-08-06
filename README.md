@@ -9,12 +9,17 @@ actually holds — and tells you when that datapoint is from.
 
 ```sh
 pnpm add github:across-protocol/v5-token-pricing
-# or, from a Bun app
-bun add github:across-protocol/v5-token-pricing
 ```
 
 The package builds itself on install (`prepare`) and ships compiled ESM plus
-`.d.ts`. Verified to load under both Node >= 20 and Bun.
+`.d.ts`.
+
+This repo is developed and built with **Node and pnpm only** — there is no Bun
+in its toolchain. Bun appears here for exactly one reason: the first consumer is
+a Bun service, so `dist/` is checked to load under **both Node >= 20 and Bun**
+before release. That check is not ceremony — a sibling package is unusable from
+Bun because a transitive dependency crashes its loader, which is why this package
+keeps its dependency surface to one.
 
 ## Use
 
@@ -31,27 +36,76 @@ const result = await getTokenPriceAt({
 if (result.priceUsd === null) {
   // nothing could price it — result.attempts says why
 } else {
-  bucketBy(result.observedAt).record(result.priceUsd);
+  store(result.priceUsd, { observedAt: result.observedAt, source: result.source });
 }
 ```
 
-## The contract
+## Types
+
+Everything below is exported from the package root.
+
+### Input
 
 ```ts
-{
-  priceUsd: number;          // USD per whole token
-  observedAt: number;        // unix ms of the UPSTREAM datapoint
-  source: "defillama" | "coingecko" | "alchemy";
-  confidence?: number;       // passed through when the upstream supplies one
-  attempts: PriceAttempt[];
-}
-// or, unpriced:
-{ priceUsd: null; observedAt: null; source: null; attempts: PriceAttempt[] }
+getTokenPriceAt(input: {
+  chainId: number;        // numeric chain id, e.g. 8453
+  tokenAddress: string;   // contract address; 0x-hex on EVM, base58 on Tron
+  timestamp: number;      // the instant you want a price for, UNIX MILLISECONDS
+  apiKeys?: ApiKeys;      // omitted entirely => DefiLlama only
+}): Promise<TokenPriceResult>
+
+type ApiKeys = {
+  coingecko?: string;     // absent => CoinGecko's free host is used
+  alchemy?: string;       // absent => Alchemy is skipped (skipped_no_key)
+};
 ```
 
-`attempts` is on both paths — that is why "unpriced" is `priceUsd === null`
-rather than a bare `null` return: the reason a call went unpriced has to travel
-out with it.
+### Return
+
+`TokenPriceResult` is a discriminated union. Narrow on `priceUsd`:
+
+```ts
+type TokenPriceResult =
+  | {
+      priceUsd: number;        // USD per WHOLE token (not per base unit)
+      observedAt: number;      // UNIX MILLISECONDS of the upstream's datapoint
+      source: PriceSource;     // which upstream answered
+      confidence?: number;     // 0..1, only when the upstream supplies one
+      attempts: PriceAttempt[];
+    }
+  | {
+      priceUsd: null;          // nothing could price it
+      observedAt: null;
+      source: null;
+      attempts: PriceAttempt[];
+    };
+
+type PriceSource = "defillama" | "coingecko" | "alchemy";
+
+type PriceAttempt = { source: PriceSource; outcome: AttemptOutcome };
+
+type AttemptOutcome =
+  | "ok"
+  | "no_data"
+  | "implausible"
+  | "error"
+  | "skipped_no_key"
+  | "skipped_unmapped_chain";
+```
+
+`attempts` is present on **both** members — which is why unpriced is
+`priceUsd === null` rather than a bare `null` return. A `null` on its own cannot
+say whether the token is unknown everywhere, the chain was unmapped, a key was
+missing, or every upstream was down, and those want different responses.
+
+The function does not reject on upstream failure: a source that throws becomes an
+`error` attempt, not an exception. It can still throw on programmer error
+(a malformed argument).
+
+### Also exported
+
+`LLAMA_SLUG_BY_CHAIN`, `CG_PLATFORM_BY_CHAIN`, `ALCHEMY_NETWORK_BY_CHAIN` —
+`Record<number, string>`, keyed by numeric chain id.
 
 ### observedAt is not the timestamp you asked for
 
@@ -64,9 +118,19 @@ Measured: for one requested instant, DefiLlama answered for USDC on Base and
 WETH on Arbitrum with observations roughly **7 minutes apart from each other**.
 Same request, two different observed instants.
 
-So: file the price into whatever time bucket `observedAt` falls in, and decide
-for yourself whether an observation that landed near-but-not-on your instant is
-acceptable. This library will not pretend it hit your instant exactly.
+This library will not pretend it hit your instant exactly, and it takes no
+position on what you do about that. Both policies are legitimate and the choice
+is yours:
+
+- **File under the instant you asked for** and treat the answer as good enough.
+  Reasonable, because the upstream was *asked about* that instant — unlike a spot
+  price, which knows nothing about the past. Keep `observedAt` anyway so the
+  distance stays auditable later.
+- **File under `observedAt`'s own bucket** and decide per lookup whether an
+  observation that landed nearby is close enough.
+
+What you must not do is discard `observedAt`. It is the only evidence of how far
+the answer sat from the question.
 
 ### Never invented
 
@@ -123,11 +187,13 @@ The stablecoin band exists because it caught real bad upstream data.
 
 ## Chains
 
-`LLAMA_SLUG_BY_CHAIN`, `CG_PLATFORM_BY_CHAIN` and `ALCHEMY_NETWORK_BY_CHAIN` are
-exported, keyed by numeric chain id. A chain missing from one map means that
-source is skipped for the call — never an error.
+Each source has its own chain identifier map. A chain missing from one map means
+that source is skipped for the call (`skipped_unmapped_chain`) — never an error,
+and the other sources still get their turn.
 
 ## Development
+
+Node >= 20 and pnpm. No Bun, no other runtime.
 
 ```sh
 pnpm install
