@@ -27,4 +27,15 @@ jobs:
 
       - run: pnpm build
 
+      # dist/ is committed (consumers use a git submodule + `file:` dep, which
+      # never runs `prepare`). A stale dist would ship silently, so fail here
+      # instead: rebuild and require the tree to be unchanged.
+      - name: Committed dist/ matches the source
+        run: |
+          if ! git diff --quiet -- dist; then
+            echo "::error::dist/ is stale — run 'pnpm build' and commit the result."
+            git --no-pager diff --stat -- dist
+            exit 1
+          fi
+
       - run: pnpm test

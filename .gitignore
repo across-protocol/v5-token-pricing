@@ -1,5 +1,9 @@
 node_modules/
-dist/
+# dist/ is COMMITTED on purpose. Consumers take this package as a git
+# submodule with a `file:` dependency, and neither git nor bun runs the
+# `prepare` build for that path — so the built output has to be in the tree or
+# the import resolves to nothing. CI re-runs the build and fails if what is
+# committed differs from what the source produces.
 coverage/
 .env
 .env.*
