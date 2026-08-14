@@ -190,6 +190,10 @@ describe("skips", () => {
         { source: "defillama", outcome: "skipped_unmapped_chain" },
         { source: "coingecko", outcome: "skipped_unmapped_chain" },
         { source: "alchemy", outcome: "skipped_unmapped_chain" },
+        // Same outcome, different reason: the chain is unknown to the slug maps,
+        // AND Across records no coin id for this token on it. Either way there is
+        // nothing to ask, so no request is made.
+        { source: "coingecko-by-id", outcome: "skipped_unmapped_chain" },
       ],
     });
   });
@@ -213,6 +217,9 @@ describe("skips", () => {
       { source: "defillama", outcome: "no_data" },
       { source: "coingecko", outcome: "no_data" },
       { source: "alchemy", outcome: "skipped_no_key" },
+      // Arbitrum WETH IS in the constants map (coingeckoId "weth"), so the
+      // asset-keyed lookup runs and the stub answers it with an empty series.
+      { source: "coingecko-by-id", outcome: "no_data" },
     ]);
   });
 
@@ -264,6 +271,7 @@ describe("unpriced", () => {
         { source: "defillama", outcome: "no_data" },
         { source: "coingecko", outcome: "error" },
         { source: "alchemy", outcome: "no_data" },
+        { source: "coingecko-by-id", outcome: "error" },
       ],
     });
   });

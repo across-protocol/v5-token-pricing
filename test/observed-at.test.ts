@@ -46,6 +46,10 @@ describe("observedAt is the upstream instant", () => {
       observedAt: observedAtSeconds * 1000,
       source: "defillama",
       confidence: 0.99,
+      // Both reported by DefiLlama in the same object as the price, and both
+      // passed through so a caller can describe what it priced.
+      symbol: "USDC",
+      decimals: 6,
       attempts: [{ source: "defillama", outcome: "ok" }],
     });
     expect(result.observedAt).not.toBe(REQUESTED_AT);

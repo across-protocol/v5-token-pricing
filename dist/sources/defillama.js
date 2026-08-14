@@ -34,6 +34,10 @@ export async function fetchDefiLlamaPrice({ chainId, tokenAddress, timestamp, })
     }
     const confidence = coin["confidence"];
     const symbol = coin["symbol"];
+    // DefiLlama returns `decimals` in the same object as `price`; it used to be read
+    // and thrown away. Passed through so a caller can describe the token it just
+    // priced without re-deriving metadata it may not have.
+    const decimals = coin["decimals"];
     return {
         outcome: "ok",
         observation: {
@@ -41,6 +45,7 @@ export async function fetchDefiLlamaPrice({ chainId, tokenAddress, timestamp, })
             observedAt: observedAtSeconds * 1000,
             ...(typeof confidence === "number" ? { confidence } : {}),
             ...(typeof symbol === "string" ? { symbol } : {}),
+            ...(typeof decimals === "number" ? { decimals } : {}),
         },
     };
 }

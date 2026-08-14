@@ -1,5 +1,6 @@
 import { isPlausiblePrice } from "./plausibility.js";
 import { fetchAlchemyPrice } from "./sources/alchemy.js";
+import { fetchCoinGeckoIdPrice } from "./sources/coingecko-by-id.js";
 import { fetchCoinGeckoPrice } from "./sources/coingecko.js";
 import { fetchDefiLlamaPrice } from "./sources/defillama.js";
 import { symbolForToken } from "./tokens.js";
@@ -11,7 +12,16 @@ import type {
   TokenPriceResult,
 } from "./types.js";
 
-/** Fixed order: free and address-native first, keyed sources after. */
+/**
+ * Fixed order: free and address-native first, keyed sources after, and the
+ * asset-keyed CoinGecko lookup LAST.
+ *
+ * `coingecko-by-id` is last on purpose. A `coingeckoId` names an ASSET and many
+ * deployments share one, so asking it before an address-native source would price
+ * every bridged USDC at canonical USDC and hide a depeg. It exists for what the
+ * address-native sources structurally cannot reach -- HyperCore account
+ * sentinels, native gas assets -- not as a shortcut past them.
+ */
 const SOURCES: {
   name: PriceSource;
   fetchPrice: (params: {
@@ -24,6 +34,7 @@ const SOURCES: {
   { name: "defillama", fetchPrice: fetchDefiLlamaPrice },
   { name: "coingecko", fetchPrice: fetchCoinGeckoPrice },
   { name: "alchemy", fetchPrice: fetchAlchemyPrice },
+  { name: "coingecko-by-id", fetchPrice: fetchCoinGeckoIdPrice },
 ];
 
 /**
@@ -67,8 +78,12 @@ export async function getTokenPriceAt({
       continue;
     }
 
-    const { priceUsd, observedAt, confidence, symbol } = result.observation;
-    if (!isPlausiblePrice({ priceUsd, symbol: knownSymbol ?? symbol })) {
+    const { priceUsd, observedAt, confidence, symbol, decimals } = result.observation;
+    // Across' own name for the token wins over the upstream's when it has one:
+    // the plausibility rules read the symbol to recognise a stablecoin, and
+    // `TOKEN_SYMBOLS_MAP` spells those consistently while the sources do not.
+    const resolvedSymbol = knownSymbol ?? symbol;
+    if (!isPlausiblePrice({ priceUsd, symbol: resolvedSymbol })) {
       attempts.push({ source: source.name, outcome: "implausible" });
       continue;
     }
@@ -79,6 +94,11 @@ export async function getTokenPriceAt({
       observedAt,
       source: source.name,
       ...(confidence === undefined ? {} : { confidence }),
+      // Reported so a caller can describe what it priced without re-deriving
+      // metadata it may not have. Absent when neither Across nor the source names
+      // the token; `decimals` only ever comes from DefiLlama today.
+      ...(resolvedSymbol === undefined ? {} : { symbol: resolvedSymbol }),
+      ...(decimals === undefined ? {} : { decimals }),
       attempts,
     };
   }
