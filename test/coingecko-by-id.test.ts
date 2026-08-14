@@ -150,6 +150,108 @@ describe("pricing an asset with no contract", () => {
   });
 });
 
+describe("native gas assets", () => {
+  it("prices native ETH, which no address lookup can resolve", async () => {
+    // THE BIGGEST SINGLE GAP THIS RUNG CLOSES. Native ETH arrives as the zero
+    // address; TOKEN_SYMBOLS_MAP.ETH records each chain's WRAPPED address, so the
+    // token has no entry of its own and every address-native source finds nothing.
+    // The id comes from PUBLIC_NETWORKS[1].nativeToken -> "ETH" -> "ethereum".
+    const stub = stubFetch(({ url }) =>
+      url.includes("/coins/ethereum/market_chart/range")
+        ? jsonResponse({ prices: [[OBSERVED_AT, 1880.28]] })
+        : jsonResponse({ coins: {} }),
+    );
+    restore = stub.restore;
+
+    const result = await getTokenPriceAt({
+      chainId: 1,
+      tokenAddress: "0x0000000000000000000000000000000000000000",
+      timestamp: REQUESTED_AT,
+    });
+
+    expect(result.priceUsd).toBe(1880.28);
+    expect(result.source).toBe("coingecko-by-id");
+  });
+
+  it("accepts the 0xEeee sentinel spelling too", async () => {
+    const stub = stubFetch(({ url }) =>
+      url.includes("/coins/ethereum/market_chart/range")
+        ? jsonResponse({ prices: [[OBSERVED_AT, 1880.28]] })
+        : jsonResponse({ coins: {} }),
+    );
+    restore = stub.restore;
+
+    const result = await getTokenPriceAt({
+      chainId: 42161,
+      tokenAddress: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+      timestamp: REQUESTED_AT,
+    });
+
+    expect(result.priceUsd).toBe(1880.28);
+  });
+
+  it("resolves a chain's OWN native symbol, not just Ether", async () => {
+    // HyperEVM's native asset is HYPE, and its zero address has no constants entry
+    // of its own (the map records HYPE at 0x5555…5555, the wrapped form), so this
+    // goes through the native fallback: PUBLIC_NETWORKS[999].nativeToken -> "HYPE"
+    // -> "hyperliquid". Proves the fallback is derived per chain rather than
+    // hardcoded to Ethereum.
+    const stub = stubFetch(({ url }) =>
+      url.includes("/coins/hyperliquid/market_chart/range")
+        ? jsonResponse({ prices: [[OBSERVED_AT, 41.5]] })
+        : jsonResponse({ coins: {} }),
+    );
+    restore = stub.restore;
+
+    const result = await getTokenPriceAt({
+      chainId: 999,
+      tokenAddress: "0x0000000000000000000000000000000000000000",
+      timestamp: REQUESTED_AT,
+    });
+
+    expect(result.priceUsd).toBe(41.5);
+    // No symbol: the sentinel matches no constants ENTRY, and an asset-keyed reply
+    // carries no label of its own. Absent rather than guessed.
+    expect(priced(result).symbol).toBeUndefined();
+  });
+
+  it("takes a real token's own recorded id, not the native fallback", async () => {
+    // The wrapped HYPE contract at 0x5555…5555 IS in the constants map, so it
+    // resolves through the entry path. Same id here, different route — this is the
+    // half of the ordering that a live chain actually exercises.
+    const stub = stubFetch(({ url }) =>
+      url.includes("/coins/hyperliquid/market_chart/range")
+        ? jsonResponse({ prices: [[OBSERVED_AT, 41.5]] })
+        : jsonResponse({ coins: {} }),
+    );
+    restore = stub.restore;
+
+    const result = await getTokenPriceAt({
+      chainId: 999,
+      tokenAddress: "0x5555555555555555555555555555555555555555",
+      timestamp: REQUESTED_AT,
+    });
+
+    expect(result.priceUsd).toBe(41.5);
+    expect(priced(result).symbol).toBe("HYPE");
+  });
+
+  it("reports nothing for a chain whose native asset has no constants entry", async () => {
+    // Lighter's LIT. An unpriced token is the correct answer; a guessed id is not.
+    const stub = stubFetch(() => jsonResponse({ coins: {} }));
+    restore = stub.restore;
+
+    const result = await getTokenPriceAt({
+      chainId: 2337,
+      tokenAddress: "0x0000000000000000000000000000000000000000",
+      timestamp: REQUESTED_AT,
+    });
+
+    expect(result.priceUsd).toBeNull();
+    expect(stub.calls.some((c) => isByIdCall(c.url))).toBe(false);
+  });
+});
+
 describe("reported token metadata", () => {
   it("prefers Across' symbol over the upstream's, and passes DefiLlama's decimals", async () => {
     // The sources disagree on spelling for one token (DefiLlama calls Avalanche's
