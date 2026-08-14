@@ -12,23 +12,56 @@ export function normalizeTokenAddress(address: string): string {
     : trimmed;
 }
 
-/** Across' canonical symbol for a token, when it knows the token. */
-export function symbolForToken({
+/**
+ * The `TOKEN_SYMBOLS_MAP` entry for a `(chainId, address)`, or undefined when
+ * Across does not carry that deployment.
+ *
+ * FIRST MATCH WINS, and that ordering is load-bearing: several entries share one
+ * mainnet address (USDC, USDC.e, USDbC and USDC-BNB all list `0xA0b8…eB48`), so a
+ * last-wins scan would name mainnet USDC "USDC-BNB" and hand it that entry's
+ * 18 decimals. Insertion order puts the canonical entry first.
+ */
+function entryForToken({
   chainId,
   tokenAddress,
 }: {
   chainId: number;
   tokenAddress: string;
-}): string | undefined {
+}): { symbol: string; coingeckoId?: string } | undefined {
   const wanted = normalizeTokenAddress(tokenAddress).toLowerCase();
   for (const token of Object.values(TOKEN_SYMBOLS_MAP)) {
     const addresses: Record<number, string> = token.addresses;
     const address = addresses[chainId];
     if (address !== undefined && address.toLowerCase() === wanted) {
-      return token.symbol;
+      return token;
     }
   }
   return undefined;
+}
+
+/** Across' canonical symbol for a token, when it knows the token. */
+export function symbolForToken(params: {
+  chainId: number;
+  tokenAddress: string;
+}): string | undefined {
+  return entryForToken(params)?.symbol;
+}
+
+/**
+ * The CoinGecko COIN ID Across records for a token, when it knows the token.
+ *
+ * Names the ASSET, not the deployment, which is exactly what makes it useful for
+ * things that have no contract to price (HyperCore's account sentinels, native
+ * gas assets) and exactly what makes it unsafe as a first choice: every bridged
+ * USDC maps to `usd-coin`, so preferring the id over the address would price a
+ * depegged bridged token at its canonical peer's value. See
+ * `sources/coingecko-by-id.ts` for why it is ordered last.
+ */
+export function coingeckoIdForToken(params: {
+  chainId: number;
+  tokenAddress: string;
+}): string | undefined {
+  return entryForToken(params)?.coingeckoId;
 }
 
 /**
