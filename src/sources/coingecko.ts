@@ -1,5 +1,5 @@
 import { CG_PLATFORM_BY_CHAIN } from "../chain-slugs.js";
-import { fetchJson } from "../http.js";
+import { fetchErrorOutcome, fetchJson } from "../http.js";
 import { asRecord } from "../json.js";
 import { normalizeTokenAddress } from "../tokens.js";
 import type { ApiKeys, SourceResult } from "../types.js";
@@ -47,8 +47,8 @@ export async function fetchCoinGeckoPrice({
       // The key travels in a header, never in the query string.
       ...(key === undefined ? {} : { headers: { "x-cg-pro-api-key": key } }),
     });
-  } catch {
-    return { outcome: "error" };
+  } catch (error) {
+    return fetchErrorOutcome(error);
   }
 
   const prices = asRecord(body)?.["prices"];

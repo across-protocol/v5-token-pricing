@@ -40,6 +40,36 @@ if (result.priceUsd === null) {
 }
 ```
 
+Many tokens at once:
+
+```ts
+import { getTokenPricesAt } from "@across-protocol/v5-token-pricing";
+
+const results = await getTokenPricesAt({
+  tokens: [
+    { chainId: 8453, tokenAddress: usdcOnBase, timestamp: t1 },
+    { chainId: 10, tokenAddress: usdcOnOptimism, timestamp: t1 },
+    { chainId: 42161, tokenAddress: wethOnArbitrum, timestamp: t2 },
+  ],
+  apiKeys: { coingecko: cgKey, alchemy: alchemyKey }, // both optional
+});
+// results[i] is exactly what getTokenPriceAt would return for tokens[i]
+```
+
+`getTokenPricesAt` returns one result per input, aligned by index, each with the
+same shape and the same per-source `attempts` as the single-token call. The
+difference is the traffic: DefiLlama's historical endpoint accepts
+comma-separated coin keys at one timestamp and its rate limit is per request,
+so the batch groups tokens by instant, chunks keys at 100 per request, and
+de-duplicates repeats. Pricing the 1,696 in-scope token instances of the V5
+launch route matrix costs ~17 requests instead of 1,696, and no longer earns a
+429 partway through. Every other source has no batch endpoint and answers one
+request per token, as before.
+
+A failed request is attributable to the tokens inside it, not to the call: a
+rate-limited request marks only its own tokens (`throttled` at that source) and
+the rest of the batch still prices.
+
 ## Types
 
 Everything below is exported from the package root.
@@ -53,6 +83,17 @@ getTokenPriceAt(input: {
   timestamp: number;      // the instant you want a price for, UNIX MILLISECONDS
   apiKeys?: ApiKeys;      // omitted entirely => DefiLlama only
 }): Promise<TokenPriceResult>
+
+getTokenPricesAt(input: {
+  tokens: TokenToPrice[]; // one entry per token/instant, results aligned by index
+  apiKeys?: ApiKeys;      // omitted entirely => DefiLlama only
+}): Promise<TokenPriceResult[]>
+
+type TokenToPrice = {
+  chainId: number;
+  tokenAddress: string;
+  timestamp: number;      // UNIX MILLISECONDS
+};
 
 type ApiKeys = {
   coingecko?: string;     // absent => CoinGecko's free host is used
@@ -89,6 +130,7 @@ type AttemptOutcome =
   | "no_data"
   | "implausible"
   | "error"
+  | "throttled"
   | "skipped_no_key"
   | "skipped_unmapped_chain";
 ```
@@ -99,8 +141,8 @@ say whether the token is unknown everywhere, the chain was unmapped, a key was
 missing, or every upstream was down, and those want different responses.
 
 The function does not reject on upstream failure: a source that throws becomes an
-`error` attempt, not an exception. It can still throw on programmer error
-(a malformed argument).
+`error` attempt (or a `throttled` attempt when the upstream rate-limited it), not
+an exception. It can still throw on programmer error (a malformed argument).
 
 ### Also exported
 
@@ -149,6 +191,7 @@ that answered are not tried and so do not appear.
 | `no_data` | answered, but had nothing for this token/instant |
 | `implausible` | returned a value that failed the sanity rules below |
 | `error` | threw, timed out, or returned a bad status / body |
+| `throttled` | rate-limited the call (HTTP 429) through its retry budget: back off and re-ask, the upstream is not down |
 | `skipped_no_key` | needs a credential that this call did not supply |
 | `skipped_unmapped_chain` | has no identifier for this chain id |
 

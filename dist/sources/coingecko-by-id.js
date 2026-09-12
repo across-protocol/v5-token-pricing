@@ -1,4 +1,4 @@
-import { fetchJson } from "../http.js";
+import { fetchErrorOutcome, fetchJson } from "../http.js";
 import { asRecord } from "../json.js";
 import { coingeckoIdForToken } from "../tokens.js";
 import { pickNearest } from "./nearest.js";
@@ -68,8 +68,8 @@ export async function fetchCoinGeckoIdPrice({ chainId, tokenAddress, timestamp, 
             ...(key === undefined ? {} : { headers: { "x-cg-pro-api-key": key } }),
         });
     }
-    catch {
-        return { outcome: "error" };
+    catch (error) {
+        return fetchErrorOutcome(error);
     }
     const prices = asRecord(body)?.["prices"];
     if (!Array.isArray(prices))

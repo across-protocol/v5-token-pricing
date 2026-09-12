@@ -14,10 +14,26 @@ export type PriceSource = "defillama" | "coingecko" | "alchemy" | "coingecko-by-
  * - no_data: the source answered but had no datapoint for this token/instant.
  * - implausible: the source returned a value that failed the sanity rules.
  * - error: the source threw, timed out, or returned a non-2xx / unparseable body.
+ * - throttled: the source rate-limited the call (HTTP 429) through its retry
+ *   budget. Reported separately from `error` because the caller's next move
+ *   differs: back off and re-ask, rather than conclude the upstream is down.
+ *   A throttled batch still prices every token outside the throttled requests,
+ *   so folding it into `error` is what made large runs LOOK covered while
+ *   silently dropping tokens.
  * - skipped_no_key: the source needs a credential that was not supplied on this call.
  * - skipped_unmapped_chain: the source has no identifier for this chain id.
  */
-export type AttemptOutcome = "ok" | "no_data" | "implausible" | "error" | "skipped_no_key" | "skipped_unmapped_chain";
+export type AttemptOutcome = "ok" | "no_data" | "implausible" | "error" | "throttled" | "skipped_no_key" | "skipped_unmapped_chain";
+/**
+ * One token at one instant: the unit a batch prices. Same shape as
+ * `getTokenPriceAt`'s input minus `apiKeys`, which stays a per-call concern.
+ */
+export type TokenToPrice = {
+    chainId: number;
+    tokenAddress: string;
+    /** The instant you want a price for, UNIX MILLISECONDS. */
+    timestamp: number;
+};
 /** Per-source outcome, returned on both the priced and the unpriced path. */
 export type PriceAttempt = {
     source: PriceSource;

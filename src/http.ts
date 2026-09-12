@@ -1,7 +1,35 @@
+import type { SourceResult } from "./types.js";
+
 /** The caller is on a write path, not a UI: short timeout, one retry. */
 const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_RETRIES = 1;
 const RETRY_DELAY_MS = 150;
+
+/**
+ * An upstream that answered with a non-2xx status, or kept failing through the
+ * retry budget. Carries the HTTP status when the upstream answered one, so a
+ * rate limit can be told apart from every other failure.
+ */
+export class HttpError extends Error {
+  readonly status: number | undefined;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+  }
+}
+
+/**
+ * The source outcome a thrown fetch describes. A 429 is called out on its own
+ * because a throttled upstream is not a broken one: the caller wants to back
+ * off and re-ask, not conclude the token is unreachable.
+ */
+export function fetchErrorOutcome(error: unknown): SourceResult {
+  return error instanceof HttpError && error.status === 429
+    ? { outcome: "throttled" }
+    : { outcome: "error" };
+}
 
 /**
  * One JSON request with a timeout and a bounded retry budget.
@@ -66,7 +94,7 @@ async function requestOnce({
 
     return {
       retryable: response.status === 429 || response.status >= 500,
-      error: new Error(`${method} ${url} -> ${response.status}`),
+      error: new HttpError(`${method} ${url} -> ${response.status}`, response.status),
     };
   } catch (cause) {
     // Network failure or timeout: worth one more try.

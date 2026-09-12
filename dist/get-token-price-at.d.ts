@@ -12,6 +12,12 @@ import type { ApiKeys, TokenPriceResult } from "./types.js";
  * interpolation, no substitution, ever.
  *
  * `attempts` records what each tried source did, on both paths.
+ *
+ * This is the 1-element case of `getTokenPricesAt`, which exists because
+ * callers pricing a large matrix through this function one token at a time
+ * throttle themselves invisibly: DefiLlama's historical endpoint takes many
+ * coin keys per request, and its rate limit is per request, not per key. Use
+ * this when you have one token; use the batch when you have many.
  */
 export declare function getTokenPriceAt({ chainId, tokenAddress, timestamp, apiKeys, }: {
     chainId: number;

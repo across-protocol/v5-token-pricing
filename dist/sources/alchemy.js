@@ -1,5 +1,5 @@
 import { ALCHEMY_NETWORK_BY_CHAIN } from "../chain-slugs.js";
-import { fetchJson } from "../http.js";
+import { fetchErrorOutcome, fetchJson } from "../http.js";
 import { asRecord } from "../json.js";
 import { normalizeTokenAddress } from "../tokens.js";
 import { pickNearest } from "./nearest.js";
@@ -34,8 +34,8 @@ export async function fetchAlchemyPrice({ chainId, tokenAddress, timestamp, apiK
             },
         });
     }
-    catch {
-        return { outcome: "error" };
+    catch (error) {
+        return fetchErrorOutcome(error);
     }
     const data = asRecord(body)?.["data"];
     if (!Array.isArray(data))
