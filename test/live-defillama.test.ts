@@ -9,6 +9,8 @@ const live = process.env["LIVE_PRICE_TESTS"] === "1" ? describe : describe.skip;
 
 const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const ARBITRUM_WETH = "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1";
+// Arc's only token; also the chain's native asset behind an ERC-20 facade.
+const ARC_USDC = "0x3600000000000000000000000000000000000000";
 
 live("live DefiLlama", () => {
   const timestamp = Date.now() - 24 * 60 * 60 * 1000;
@@ -39,5 +41,17 @@ live("live DefiLlama", () => {
     expect(result.source).toBe("defillama");
     expect(result.priceUsd).toBeGreaterThan(0);
     expect(typeof result.observedAt).toBe("number");
+  });
+
+  it("prices Arc USDC, so the 5042 slug reaches a real DefiLlama coin", async () => {
+    const result = await getTokenPriceAt({
+      chainId: 5042,
+      tokenAddress: ARC_USDC,
+      timestamp,
+    });
+
+    expect(result.source).toBe("defillama");
+    expect(result.priceUsd).toBeGreaterThan(0.5);
+    expect(result.priceUsd).toBeLessThan(2);
   });
 });

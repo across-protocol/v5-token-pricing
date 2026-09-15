@@ -28,6 +28,14 @@
  * ALCHEMY IS DELIBERATELY UNTOUCHED: its network slugs were not verified against
  * a live Alchemy Prices response, and guessing one buys a `no_data` that looks
  * like an uncovered token. Extend it the same way — by probing, not by analogy.
+ *
+ * Arc (5042) has CoinGecko and DefiLlama rows, both probed 2026-09-15: platform
+ * `arc` declares `chain_identifier` 5042 and `market_chart/range` returns points
+ * for its USDC at `0x3600…0000`; DefiLlama prices `arc:0x3600…0000`. It has NO
+ * Alchemy row: `tokens/historical`, the endpoint this package calls, rejects
+ * `arc-mainnet` with "Unsupported network" while `tokens/by-address` accepts it,
+ * so a row here would turn every Arc lookup into an `error` attempt that reads as
+ * no coverage. Add it once `tokens/historical` answers for arc-mainnet.
  */
 /** CoinGecko asset platform ids (`/coins/{platform}/contract/{address}`). */
 export declare const CG_PLATFORM_BY_CHAIN: Readonly<Record<number, string>>;
