@@ -14,12 +14,17 @@ const ARC_USDC = "0x3600000000000000000000000000000000000000";
 
 live("live DefiLlama", () => {
   const timestamp = Date.now() - 24 * 60 * 60 * 1000;
+  // These check that DefiLlama is reachable, not the staleness policy: DefiLlama
+  // serves Arbitrum WETH only every ~30 minutes, so under the default threshold
+  // CoinGecko would answer instead.
+  const maxStalenessMs = Number.POSITIVE_INFINITY;
 
   it("prices Base USDC near the requested instant", async () => {
     const result = await getTokenPriceAt({
       chainId: 8453,
       tokenAddress: BASE_USDC,
       timestamp,
+      maxStalenessMs,
     });
 
     expect(result.source).toBe("defillama");
@@ -36,6 +41,7 @@ live("live DefiLlama", () => {
       chainId: 42161,
       tokenAddress: ARBITRUM_WETH,
       timestamp,
+      maxStalenessMs,
     });
 
     expect(result.source).toBe("defillama");
@@ -48,6 +54,7 @@ live("live DefiLlama", () => {
       chainId: 5042,
       tokenAddress: ARC_USDC,
       timestamp,
+      maxStalenessMs,
     });
 
     expect(result.source).toBe("defillama");

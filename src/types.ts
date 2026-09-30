@@ -14,6 +14,9 @@ export type PriceSource = "defillama" | "coingecko" | "alchemy" | "coingecko-by-
  * - ok: the source returned a plausible datapoint.
  * - no_data: the source answered but had no datapoint for this token/instant.
  * - implausible: the source returned a value that failed the sanity rules.
+ * - stale: the source returned a plausible datapoint, but further than
+ *   `maxStalenessMs` from the requested instant. The next source is asked; if
+ *   none answers within the threshold, the least stale datapoint is returned.
  * - error: the source threw, timed out, or returned a non-2xx / unparseable body.
  * - skipped_no_key: the source needs a credential that was not supplied on this call.
  * - skipped_unmapped_chain: the source has no identifier for this chain id.
@@ -22,6 +25,7 @@ export type AttemptOutcome =
   | "ok"
   | "no_data"
   | "implausible"
+  | "stale"
   | "error"
   | "skipped_no_key"
   | "skipped_unmapped_chain";
@@ -42,9 +46,9 @@ export type ApiKeys = {
  * The answer.
  *
  * `observedAt` is the instant of the datapoint the upstream actually returned,
- * verbatim — NOT the requested timestamp and NOT the wall clock. It can be
- * minutes away from what was asked for; how far depends on the token's
- * liquidity. The caller decides whether that distance is acceptable.
+ * verbatim — NOT the requested timestamp and NOT the wall clock. It is within
+ * `maxStalenessMs` of what was asked for whenever a source answered that close;
+ * otherwise it is the closest answer any source gave, which can be further off.
  */
 export type TokenPriceResult =
   | {
@@ -102,4 +106,4 @@ export type SourceObservation = {
 
 export type SourceResult =
   | { outcome: "ok"; observation: SourceObservation }
-  | { outcome: Exclude<AttemptOutcome, "ok" | "implausible"> };
+  | { outcome: Exclude<AttemptOutcome, "ok" | "implausible" | "stale"> };
