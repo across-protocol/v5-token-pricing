@@ -52,6 +52,7 @@ getTokenPriceAt(input: {
   tokenAddress: string;   // contract address; 0x-hex on EVM, base58 on Tron
   timestamp: number;      // the instant you want a price for, UNIX MILLISECONDS
   apiKeys?: ApiKeys;      // omitted entirely => DefiLlama only
+  maxStalenessMs?: number; // default DEFAULT_MAX_STALENESS_MS (5 min); see below
 }): Promise<TokenPriceResult>
 
 type ApiKeys = {
@@ -88,6 +89,7 @@ type AttemptOutcome =
   | "ok"
   | "no_data"
   | "implausible"
+  | "stale"
   | "error"
   | "skipped_no_key"
   | "skipped_unmapped_chain";
@@ -107,6 +109,8 @@ The function does not reject on upstream failure: a source that throws becomes a
 `LLAMA_SLUG_BY_CHAIN`, `CG_PLATFORM_BY_CHAIN`, `ALCHEMY_NETWORK_BY_CHAIN` —
 `Record<number, string>`, keyed by numeric chain id.
 
+`DEFAULT_MAX_STALENESS_MS` — the default for `maxStalenessMs`, 5 minutes.
+
 ### observedAt is not the timestamp you asked for
 
 **`observedAt` is the instant of the datapoint the upstream returned.** It is
@@ -118,9 +122,12 @@ Measured: for one requested instant, DefiLlama answered for USDC on Base and
 WETH on Arbitrum with observations roughly **7 minutes apart from each other**.
 Same request, two different observed instants.
 
-This library will not pretend it hit your instant exactly, and it takes no
-position on what you do about that. Both policies are legitimate and the choice
-is yours:
+This library will not pretend it hit your instant exactly. It does prefer a
+close answer to a far one: a datapoint more than `maxStalenessMs` from your
+instant is `stale`, and the next source is asked for a closer one (see
+[Stale answers](#stale-answers)). Even so, `observedAt` can sit up to
+`maxStalenessMs` away, or further when no source had anything closer. What you
+file it under is your call, and both policies are legitimate:
 
 - **File under the instant you asked for** and treat the answer as good enough.
   Reasonable, because the upstream was *asked about* that instant — unlike a spot
@@ -141,13 +148,14 @@ or substitute a similar token.
 ### attempts
 
 One entry per source that was tried, in the order tried. Sources after the one
-that answered are not tried and so do not appear.
+that answered within `maxStalenessMs` are not tried and so do not appear.
 
 | outcome | meaning |
 | --- | --- |
 | `ok` | returned a plausible datapoint |
 | `no_data` | answered, but had nothing for this token/instant |
 | `implausible` | returned a value that failed the sanity rules below |
+| `stale` | returned a plausible datapoint more than `maxStalenessMs` from the requested instant |
 | `error` | threw, timed out, or returned a bad status / body |
 | `skipped_no_key` | needs a credential that this call did not supply |
 | `skipped_unmapped_chain` | has no identifier for this chain id |
@@ -163,9 +171,33 @@ logs, no spans, no metrics, not even on error paths. You decide what to record.
    the free host otherwise.
 3. **Alchemy** — historical prices, nearest datapoint wins. Skipped entirely
    without `apiKeys.alchemy`.
+4. **CoinGecko by coin id** — for what has no contract to look up (HyperCore
+   account sentinels, native gas assets). Asked only when none of the three
+   above produced a plausible answer, stale or not.
 
 A source that throws, times out, or returns an implausible value is a **miss**,
 not a failure: the next source still gets its turn.
+
+### Stale answers
+
+A plausible datapoint more than `maxStalenessMs` (default 5 minutes) from the
+requested instant, in either direction, is **stale**. It is kept, and the next
+source is asked:
+
+- the first source to answer within the threshold wins;
+- if none does, the **least stale** answer wins (the earlier source on a tie),
+  with its own `observedAt`;
+- a stale answer from an address-native source still beats asking CoinGecko by
+  coin id, which prices the asset rather than the token.
+
+Why: DefiLlama serves some tokens only about every 30 minutes. Measured on
+2026-09-30, its Ink WETH and Arbitrum WETH answers sat 7 to 12 minutes from the
+requested 5-minute marks, while CoinGecko and Alchemy serve 5-minute data.
+Taking DefiLlama's first answer froze one price across consecutive 5-minute
+buckets.
+
+Pass `maxStalenessMs: Infinity` to take the first plausible answer whatever its
+distance, as this package did before.
 
 ### Implausible means
 

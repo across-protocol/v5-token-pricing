@@ -21,7 +21,8 @@ afterEach(() => {
  */
 describe("observedAt is the upstream instant", () => {
   it("reports DefiLlama's timestamp, not the requested one", async () => {
-    const observedAtSeconds = Math.floor(REQUESTED_AT / 1000) - 7 * 60;
+    // Inside the staleness threshold, so DefiLlama's answer is taken as is.
+    const observedAtSeconds = Math.floor(REQUESTED_AT / 1000) - 4 * 60;
     const stub = stubFetch(() =>
       jsonResponse(
         llamaBody({
@@ -53,13 +54,14 @@ describe("observedAt is the upstream instant", () => {
       attempts: [{ source: "defillama", outcome: "ok" }],
     });
     expect(result.observedAt).not.toBe(REQUESTED_AT);
-    expect(REQUESTED_AT - (result.observedAt ?? 0)).toBe(7 * 60 * 1000);
+    expect(REQUESTED_AT - (result.observedAt ?? 0)).toBe(4 * 60 * 1000);
   });
 
   it("never returns the requested instant, whatever the upstream offset", async () => {
     await fc.assert(
       fc.asyncProperty(
         // Upstream answers anywhere from 30 minutes early to 30 minutes late.
+        // Past 5 minutes the answer is stale, but nothing else prices, so it wins.
         fc.integer({ min: -1800, max: 1800 }).filter((offset) => offset !== 0),
         async (offsetSeconds) => {
           const observedAtSeconds =
